@@ -91,17 +91,16 @@
       transition:transform .12s ease, background .15s ease, border-color .15s ease;
       display:inline-flex; align-items:center; gap:8px;
     }
-    /* Dot icon inside GPS button */
-    .gps-dot{
-      width:8px; height:8px;
-      border-radius:50%;
-      background:#2aa5ff;
-      box-shadow:0 0 0 2px rgba(42,165,255,.25);
-      flex-shrink:0;
-    }
     /* Wrapper for right-side map controls */
     .map-controls-right{
       display:flex; align-items:center; gap:8px;
+    }
+    /* All map icon buttons: fixed square, icon-only */
+    .map-controls-right .overlay-btn{
+      padding:0;
+      width:40px; height:40px;
+      border-radius:12px;
+      justify-content:center;
     }
     .overlay-btn:hover{ transform:translateY(-1px); border-color:var(--border-strong); background:rgba(18,26,47,.9); }
     .overlay-btn.primary{
@@ -113,24 +112,73 @@
       border-color:rgba(98,208,255,.55);
     }
 
-    .baselayer{
-      display:inline-flex; gap:2px;
-      background:rgba(10,15,31,.75);
+    /* ===== LAYER BOTTOM SHEET ===== */
+    .layer-sheet{
+      position:fixed; inset:0;
+      z-index:2000;
+      display:flex; align-items:flex-end;
+      pointer-events:none;
+    }
+    .layer-sheet.open{ pointer-events:auto; }
+
+    .layer-sheet-backdrop{
+      position:absolute; inset:0;
+      background:rgba(0,0,0,0);
+      transition:background .3s ease;
+    }
+    .layer-sheet.open .layer-sheet-backdrop{ background:rgba(0,0,0,.55); }
+
+    .layer-sheet-panel{
+      position:relative; width:100%;
+      max-width:480px; margin:0 auto;
+      background:var(--panel);
+      border:1px solid var(--border-strong);
+      border-bottom:none;
+      border-radius:20px 20px 0 0;
+      padding:10px 20px 36px;
+      transform:translateY(100%);
+      transition:transform .35s cubic-bezier(.32,.72,0,1);
+      box-shadow:0 -12px 48px rgba(0,0,0,.6);
+    }
+    .layer-sheet.open .layer-sheet-panel{ transform:translateY(0); }
+
+    .layer-sheet-handle{
+      width:36px; height:4px;
+      background:rgba(255,255,255,.2);
+      border-radius:2px;
+      margin:0 auto 16px;
+    }
+    .layer-sheet-title{
+      font-size:11px; font-weight:600; letter-spacing:.07em;
+      text-transform:uppercase; color:var(--muted);
+      margin-bottom:14px;
+    }
+    .layer-sheet-cards{
+      display:flex; gap:10px;
+    }
+    .layer-card{
+      flex:1;
+      background:rgba(255,255,255,.04);
       border:1px solid var(--border);
-      backdrop-filter:blur(10px);
-      border-radius:12px; padding:3px;
-      box-shadow:var(--shadow);
+      border-radius:14px;
+      padding:14px 10px 12px;
+      display:flex; flex-direction:column; align-items:center; gap:10px;
+      font:inherit; cursor:pointer; color:var(--text);
+      transition:background .15s, border-color .15s;
     }
-    .baselayer button{
-      background:transparent; border:none; padding:7px 12px;
-      font-size:12px; color:var(--muted);
-      border-radius:9px;
+    .layer-card:hover{ background:rgba(255,255,255,.08); border-color:var(--border-strong); }
+    .layer-card.active{
+      background:rgba(98,208,255,.12);
+      border-color:rgba(98,208,255,.55);
     }
-    .baselayer button:hover{ background:rgba(255,255,255,.05); color:var(--text); }
-    .baselayer button.active{
-      background:rgba(98,208,255,.14);
-      color:var(--text);
-      box-shadow:inset 0 0 0 1px rgba(98,208,255,.32);
+    .layer-card-preview{
+      width:52px; height:52px;
+      border-radius:10px;
+      overflow:hidden;
+      box-shadow:0 2px 8px rgba(0,0,0,.4);
+    }
+    .layer-card-label{
+      font-size:12px; font-weight:600; letter-spacing:.02em;
     }
 
     .map-overlay-bottom{
@@ -209,25 +257,8 @@
       pointer-events:none;
     }
 
-    /* Compass button */
-    .compass-btn{
-      width:42px; height:42px;
-      background:rgba(10,15,31,.75);
-      border:1px solid var(--border);
-      border-radius:50%;
-      backdrop-filter:blur(10px);
-      box-shadow:var(--shadow);
-      display:inline-flex; align-items:center; justify-content:center;
-      padding:0;
-      flex-shrink:0;
-      transition:border-color .15s ease, background .15s ease;
-    }
-    .compass-btn:hover{ border-color:var(--border-strong); background:rgba(18,26,47,.9); }
-    .compass-btn.active{
-      border-color:rgba(98,208,255,.55);
-      background:rgba(98,208,255,.12);
-    }
-    #compassNeedle{ transform-origin:12px 12px; transition:transform .25s ease; }
+    /* Compass needle rotation – centre of 16×16 viewBox */
+    #compassNeedle{ transform-origin:8px 8px; transition:transform .25s ease; }
 
     /* Leaflet overrides */
     .leaflet-popup-content-wrapper,
@@ -569,24 +600,8 @@
       .details-screen{ padding:28px 16px 40px; }
       .stats{ grid-template-columns:repeat(2, minmax(0,1fr)); }
       h1{ font-size:24px; }
-
-      /* Map overlay: no gradient, controls stack vertically on the right */
-      .map-overlay-top{
-        background:none;
-        padding:10px;
-        align-items:flex-start;
-      }
-      .map-controls-right{
-        flex-direction:column;
-        align-items:flex-end;
-        gap:6px;
-      }
-      /* Hide text labels → icon-only buttons */
-      .btn-label{ display:none; }
-      .overlay-btn{ padding:9px 11px; border-radius:10px; gap:0; }
-      /* Baselayer stacks vertically */
-      .baselayer{ flex-direction:column; border-radius:10px; }
-      .baselayer button{ padding:7px 12px; text-align:center; }
+      .map-overlay-top{ padding:10px 12px; gap:8px; }
+      .map-controls-right{ gap:6px; }
     }
   </style>
 </head>
@@ -605,28 +620,123 @@
       <div class="spacer"></div>
 
       <div class="map-controls-right">
+
         <button class="overlay-btn" id="fitAllBtn" title="Encuadrar toda la ruta">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="1" y="1" width="5" height="5"/><rect x="8" y="1" width="5" height="5"/><rect x="1" y="8" width="5" height="5"/><rect x="8" y="8" width="5" height="5"/></svg>
-          <span class="btn-label">Ver ruta</span>
-        </button>
-        <button class="overlay-btn" id="gpsBtn" title="Mi ubicación GPS">
-          <span class="gps-dot"></span>
-          <span class="btn-label">Mi GPS</span>
-        </button>
-        <button class="compass-btn" id="compassBtn" title="Brújula – volver al norte">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,.18)" stroke-width="1.5"/>
-            <g id="compassNeedle">
-              <polygon points="12,3 10.5,12 13.5,12" fill="#ff4455"/>
-              <polygon points="12,21 10.5,12 13.5,12" fill="rgba(255,255,255,.4)"/>
+          <svg width="25" height="25" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <g stroke-linecap="round" stroke-linejoin="round">
+              <!-- Esquinas / encajar vista -->
+              <path d="M1.5 5V2.5H4" stroke="#2563EB" stroke-width="1.6"/>
+              <path d="M1.5 11V13.5H4" stroke="#2563EB" stroke-width="1.6"/>
+              <path d="M14.5 5V2.5H12" stroke="#2563EB" stroke-width="1.6"/>
+              <path d="M14.5 11V13.5H12" stroke="#2563EB" stroke-width="1.6"/>
+
+              <!-- Ruta / contenido a encajar -->
+              <path d="M5 10.5L7 8.5L8.5 9.5L11 6.5" stroke="#16A34A" stroke-width="1.6"/>
+              <circle cx="5" cy="10.5" r="0.9" fill="#16A34A"/>
+              <circle cx="7" cy="8.5" r="0.9" fill="#16A34A"/>
+              <circle cx="8.5" cy="9.5" r="0.9" fill="#16A34A"/>
+              <circle cx="11" cy="6.5" r="0.9" fill="#16A34A"/>
             </g>
-            <circle cx="12" cy="12" r="1.8" fill="rgba(255,255,255,.25)"/>
           </svg>
         </button>
-        <div class="baselayer" id="baseSwitch">
-          <button data-base="osm" class="active">Mapa</button>
-          <button data-base="topo">Topo</button>
-          <button data-base="sat">Sat</button>
+
+        <button class="overlay-btn" id="gpsBtn" title="Mi ubicación GPS">
+          <svg width="25" height="25" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="8" r="4.5" stroke="#2563EB" stroke-width="1.6"/>
+            <circle cx="8" cy="8" r="1.5" c9c9c9="#DC2626"/>
+            <path d="M8 1V2.3" stroke="#ffffff" stroke-width="1.6"/>
+            <path d="M8 12.7V15" stroke="#c9c9c9" stroke-width="1.6"/>
+            <path d="M1 8H2.3" stroke="#c9c9c9" stroke-width="1.6"/>
+            <path d="M12.7 8H15" stroke="#c9c9c9" stroke-width="1.6"/>
+          </g>
+        </svg>
+        </button>
+
+        <button class="overlay-btn" id="compassBtn" title="Volver al norte">
+          <svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="128" cy="128" r="100" fill="none" stroke="#c9c9c9" stroke-width="10"/>
+          <line x1="128" y1="26" x2="128" y2="42" stroke="#c9c9c9" stroke-width="8" stroke-linecap="round"/>
+          <text x="128" y="68" text-anchor="middle" font-size="30" font-family="Arial, sans-serif" font-weight="bold" fill="#222">N</text>
+          <polygon points="128,78 110,128 146,128" fill="#e11d48"/>
+          <polygon points="128,178 110,128 146,128" fill="#c9c9c9"/>
+          <circle cx="128" cy="128" r="12" fill="white" stroke="#c9c9c9" stroke-width="6"/>
+        </svg>
+        </button>
+
+        <button class="overlay-btn" id="layersBtn" title="Cambiar capa del mapa">
+          <svg width="25" height="25" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <g stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 1L14 4.5L8 8L2 4.5Z" stroke="#2563EB" stroke-width="1.6" fill="#DBEAFE"/>
+              <path d="M2 8L8 11.5L14 8" stroke="#0F766E" stroke-width="1.6"/>
+              <path d="M2 11.5L8 15L14 11.5" stroke="#475569" stroke-width="1.6"/>
+            </g>
+          </svg>
+        </button>
+
+      </div>
+    </div>
+
+    <!-- Layer picker bottom sheet -->
+    <div id="layerSheet" class="layer-sheet">
+      <div class="layer-sheet-backdrop" id="layerBackdrop"></div>
+      <div class="layer-sheet-panel">
+        <div class="layer-sheet-handle"></div>
+        <div class="layer-sheet-title">Capa del mapa</div>
+        <div class="layer-sheet-cards" id="layerCards">
+
+          <button class="layer-card active" data-base="osm">
+            <div class="layer-card-preview">
+              <svg viewBox="0 0 52 52" width="52" height="52" xmlns="http://www.w3.org/2000/svg">
+                <rect width="52" height="52" fill="#3a6faa"/>
+                <rect x="0" y="0" width="52" height="52" fill="url(#g-osm)"/>
+                <defs><linearGradient id="g-osm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a7fc0"/><stop offset="1" stop-color="#2d5a8a"/></linearGradient></defs>
+                <!-- roads -->
+                <path d="M0 30 Q16 26 26 26 Q36 26 52 22" stroke="rgba(255,255,255,.9)" stroke-width="3" fill="none" stroke-linecap="round"/>
+                <path d="M14 0 L20 52" stroke="rgba(255,255,255,.6)" stroke-width="2" fill="none"/>
+                <path d="M0 14 Q26 18 52 14" stroke="rgba(255,200,100,.7)" stroke-width="1.5" fill="none"/>
+                <circle cx="26" cy="26" r="4" fill="#62d0ff" stroke="white" stroke-width="1.5"/>
+              </svg>
+            </div>
+            <span class="layer-card-label">Estándar</span>
+          </button>
+
+          <button class="layer-card" data-base="topo">
+            <div class="layer-card-preview">
+              <svg viewBox="0 0 52 52" width="52" height="52" xmlns="http://www.w3.org/2000/svg">
+                <rect width="52" height="52" fill="#3a5a2a"/>
+                <!-- terrain gradient -->
+                <path d="M0 52 L14 28 L26 10 L38 22 L52 8 L52 52 Z" fill="rgba(100,60,20,.5)"/>
+                <path d="M0 52 L14 28 L26 10 L38 22 L52 8" stroke="rgba(255,255,255,.8)" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+                <!-- contour lines -->
+                <path d="M0 40 Q12 36 22 38 Q32 40 44 36 L52 34" stroke="rgba(255,220,120,.6)" stroke-width="1" fill="none"/>
+                <path d="M0 46 Q14 44 28 46 Q38 48 52 44" stroke="rgba(255,220,120,.45)" stroke-width="1" fill="none"/>
+                <circle cx="26" cy="10" r="2.5" fill="rgba(255,255,255,.9)"/>
+              </svg>
+            </div>
+            <span class="layer-card-label">Relieve</span>
+          </button>
+
+          <button class="layer-card" data-base="sat">
+            <div class="layer-card-preview">
+              <svg viewBox="0 0 52 52" width="52" height="52" xmlns="http://www.w3.org/2000/svg">
+                <rect width="52" height="52" fill="#111a10"/>
+                <!-- land patches -->
+                <path d="M4 30 Q14 22 24 26 Q30 28 34 20 Q40 12 50 18 L52 52 L0 52 Z" fill="rgba(40,80,30,.8)"/>
+                <path d="M0 18 Q8 14 14 20 Q18 24 10 32 Q4 38 0 34 Z" fill="rgba(50,90,35,.7)"/>
+                <!-- water -->
+                <path d="M28 32 Q36 28 44 34 Q48 38 44 44 Q36 50 28 46 Z" fill="rgba(20,60,120,.8)"/>
+                <!-- snow/rock on top -->
+                <path d="M34 10 Q38 6 44 10 Q42 14 38 16 Q34 14 34 10Z" fill="rgba(220,230,255,.4)"/>
+                <!-- satellite dot -->
+                <circle cx="40" cy="10" r="2" fill="rgba(255,255,255,.8)"/>
+                <line x1="40" y1="8" x2="44" y2="4" stroke="rgba(255,255,255,.5)" stroke-width="1"/>
+                <line x1="42" y1="10" x2="46" y2="10" stroke="rgba(255,255,255,.5)" stroke-width="1"/>
+              </svg>
+            </div>
+            <span class="layer-card-label">Satélite</span>
+          </button>
+
         </div>
       </div>
     </div>
@@ -880,9 +990,9 @@ const DAILY_TRACKS = [
 
     // --- MAP ---
     const map = L.map("map", {
-      zoomControl: true,
+      zoomControl: false,
       scrollWheelZoom: true,
-      attributionControl: true,
+      attributionControl: false,
       zoomAnimation: true
     }).setView([42.74, -0.28], 8);
 
@@ -1502,7 +1612,6 @@ const DAILY_TRACKS = [
     let usingAbsoluteOrientation = false;
 
     const gpsBtn = document.getElementById("gpsBtn");
-    const gpsBtnLabel = gpsBtn.querySelector('.btn-label');
     const compassBtn = document.getElementById("compassBtn");
 
     function makeGpsIcon(){
@@ -1656,7 +1765,6 @@ const DAILY_TRACKS = [
         return;
       }
       gpsBtn.classList.add("active");
-      if (gpsBtnLabel) gpsBtnLabel.textContent = "Localizando…";
       let firstFix = true;
       gpsWatchId = navigator.geolocation.watchPosition(
         pos => {
@@ -1670,7 +1778,6 @@ const DAILY_TRACKS = [
             gpsAccuracy.setLatLng(ll);
             gpsAccuracy.setRadius(accuracy);
           }
-          if (gpsBtnLabel) gpsBtnLabel.textContent = "GPS activo";
           startOrientationListener(); // start compass for the heading cone
           if (firstFix){
             firstFix = false;
@@ -1679,7 +1786,7 @@ const DAILY_TRACKS = [
         },
         err => {
           gpsBtn.classList.remove("active");
-          if (gpsBtnLabel) gpsBtnLabel.textContent = "Mi GPS";
+
           alert("No se pudo obtener ubicación: " + err.message);
           gpsWatchId = null;
         },
@@ -1695,7 +1802,6 @@ const DAILY_TRACKS = [
       gpsLayer.clearLayers();
       gpsMarker = null; gpsAccuracy = null;
       gpsBtn.classList.remove("active");
-      if (gpsBtnLabel) gpsBtnLabel.textContent = "Mi GPS";
       resetNorth();
       stopOrientationListener();
     }
@@ -1709,16 +1815,29 @@ const DAILY_TRACKS = [
       resetNorth();
     });
 
-    // --- BASE LAYER SWITCHER ---
-    document.getElementById("baseSwitch").addEventListener("click", (e) => {
-      const btn = e.target.closest("button[data-base]");
-      if (!btn) return;
-      const key = btn.dataset.base;
-      if (!baseLayers[key] || baseLayers[key] === currentBase) return;
-      map.removeLayer(currentBase);
-      currentBase = baseLayers[key].addTo(map);
-      if (waymarkedOverlay) waymarkedOverlay.bringToFront();
-      document.querySelectorAll("#baseSwitch button").forEach(b => b.classList.toggle("active", b === btn));
+    // --- LAYER BOTTOM SHEET ---
+    const layerSheet = document.getElementById("layerSheet");
+    const layersBtn  = document.getElementById("layersBtn");
+
+    function openLayerSheet(){ layerSheet.classList.add("open"); }
+    function closeLayerSheet(){ layerSheet.classList.remove("open"); }
+
+    layersBtn.addEventListener("click", () => {
+      layerSheet.classList.contains("open") ? closeLayerSheet() : openLayerSheet();
+    });
+    document.getElementById("layerBackdrop").addEventListener("click", closeLayerSheet);
+
+    document.getElementById("layerCards").addEventListener("click", (e) => {
+      const card = e.target.closest(".layer-card[data-base]");
+      if (!card) return;
+      const key = card.dataset.base;
+      if (baseLayers[key] && baseLayers[key] !== currentBase){
+        map.removeLayer(currentBase);
+        currentBase = baseLayers[key].addTo(map);
+        if (waymarkedOverlay) waymarkedOverlay.bringToFront();
+      }
+      document.querySelectorAll(".layer-card").forEach(c => c.classList.toggle("active", c === card));
+      setTimeout(closeLayerSheet, 220);
     });
 
     riskFilter.addEventListener("change", applyFilter);
