@@ -48,7 +48,7 @@
       height:100vh;
       overflow:hidden;
     }
-    #map{ position:absolute; inset:0; }
+    #map{ position:absolute; inset:0; transform-origin:center center; transition:transform .2s ease-out; }
     .leaflet-container{ background:#0c1324; font-family:inherit; }
 
     .map-overlay-top{
@@ -174,6 +174,43 @@
       0%{ transform:scale(.4); opacity:1; }
       100%{ transform:scale(1.8); opacity:0; }
     }
+
+    /* GPS heading wrapper & cone */
+    .gps-wrapper{
+      position:relative;
+      width:14px; height:14px;
+      transform-origin:7px 7px;
+    }
+    .gps-cone{
+      position:absolute;
+      width:0; height:0;
+      border-left:7px solid transparent;
+      border-right:7px solid transparent;
+      border-bottom:24px solid rgba(42,165,255,.55);
+      top:-24px; left:0;
+      display:none;
+      filter:blur(.5px);
+    }
+
+    /* Compass button */
+    .compass-btn{
+      width:42px; height:42px;
+      background:rgba(10,15,31,.75);
+      border:1px solid var(--border);
+      border-radius:50%;
+      backdrop-filter:blur(10px);
+      box-shadow:var(--shadow);
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:0;
+      flex-shrink:0;
+      transition:border-color .15s ease, background .15s ease;
+    }
+    .compass-btn:hover{ border-color:var(--border-strong); background:rgba(18,26,47,.9); }
+    .compass-btn.active{
+      border-color:rgba(98,208,255,.55);
+      background:rgba(98,208,255,.12);
+    }
+    #compassNeedle{ transform-origin:12px 12px; transition:transform .25s ease; }
 
     /* Leaflet overrides */
     .leaflet-popup-content-wrapper,
@@ -538,6 +575,16 @@
       <button class="overlay-btn" id="gpsBtn" title="Mi ubicación GPS">
         <span style="width:8px;height:8px;border-radius:50%;background:#2aa5ff;box-shadow:0 0 0 2px rgba(42,165,255,.25);"></span>
         Mi GPS
+      </button>
+      <button class="compass-btn" id="compassBtn" title="Brújula – volver al norte / activar seguimiento">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,.18)" stroke-width="1.5"/>
+          <g id="compassNeedle">
+            <polygon points="12,3 10.5,12 13.5,12" fill="#ff4455"/>
+            <polygon points="12,21 10.5,12 13.5,12" fill="rgba(255,255,255,.4)"/>
+          </g>
+          <circle cx="12" cy="12" r="1.8" fill="rgba(255,255,255,.25)"/>
+        </svg>
       </button>
       <div class="baselayer" id="baseSwitch">
         <button data-base="osm" class="active">Mapa</button>
@@ -1407,19 +1454,123 @@ const DAILY_TRACKS = [
       });
     }
 
-    // --- GPS ---
+    // --- GPS & COMPASS ---
     let gpsWatchId = null;
     let gpsMarker = null;
     let gpsAccuracy = null;
+    let deviceHeading = null;       // degrees CW from north (compass)
+    let currentBearing = 0;         // current map rotation (degrees CW)
+    let compassMode = false;        // true = auto-rotate map to heading
+    let orientationListening = false;
+    let usingAbsoluteOrientation = false;
+
     const gpsBtn = document.getElementById("gpsBtn");
+    const compassBtn = document.getElementById("compassBtn");
 
     function makeGpsIcon(){
       return L.divIcon({
         className:"gps-icon",
-        html:'<div class="gps-pulse"></div>',
+        html:'<div class="gps-wrapper"><div class="gps-cone" id="gpsCone"></div><div class="gps-pulse"></div></div>',
         iconSize:[14,14],
         iconAnchor:[7,7]
       });
+    }
+
+    function updateGpsHeadingCone(){
+      const cone = document.getElementById('gpsCone');
+      if (!cone || !gpsMarker) return;
+      if (deviceHeading !== null){
+        cone.style.display = 'block';
+        // wrapper rotates so the cone points in heading direction;
+        // subtract currentBearing so it stays correct regardless of map rotation
+        const visualAngle = deviceHeading - currentBearing;
+        cone.parentElement.style.transform = `rotate(${visualAngle}deg)`;
+      } else {
+        cone.style.display = 'none';
+      }
+    }
+
+    function setMapBearing(heading){
+      currentBearing = ((heading % 360) + 360) % 360;
+      const mapEl = document.getElementById('map');
+      if (currentBearing < 0.5){
+        mapEl.style.transform = '';
+      } else {
+        // rotate opposite to heading so your heading is at the top;
+        // scale 1.45 ≈ √2 to cover corners when rotated ~45°
+        mapEl.style.transform = `rotate(${-currentBearing}deg) scale(1.45)`;
+      }
+      // needle points to where north actually is on screen
+      const needle = document.getElementById('compassNeedle');
+      if (needle) needle.style.transform = `rotate(${currentBearing}deg)`;
+      updateGpsHeadingCone();
+    }
+
+    function resetNorth(){
+      compassMode = false;
+      currentBearing = 0;
+      document.getElementById('map').style.transform = '';
+      const needle = document.getElementById('compassNeedle');
+      if (needle) needle.style.transform = 'rotate(0deg)';
+      compassBtn.classList.remove('active');
+      compassBtn.title = 'Brújula – activar seguimiento';
+      updateGpsHeadingCone();
+    }
+
+    function handleOrientationData(e){
+      let heading = null;
+      if (e.webkitCompassHeading != null){
+        // iOS: already corrected for device orientation
+        heading = e.webkitCompassHeading;
+      } else if (e.alpha != null && (e.absolute === true)){
+        // Android absolute: alpha is CCW from north → convert to CW
+        heading = (360 - e.alpha + 360) % 360;
+      }
+      if (heading === null) return;
+      deviceHeading = heading;
+      if (compassMode) setMapBearing(heading);
+      else updateGpsHeadingCone();
+    }
+
+    function handleOrientationAbsolute(e){
+      usingAbsoluteOrientation = true;
+      handleOrientationData(e);
+    }
+    function handleOrientationRelative(e){
+      if (!usingAbsoluteOrientation) handleOrientationData(e);
+    }
+
+    function startOrientationListener(){
+      if (orientationListening) return;
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function'){
+        // iOS 13+: must request permission
+        DeviceOrientationEvent.requestPermission()
+          .then(state => {
+            if (state === 'granted'){
+              orientationListening = true;
+              window.addEventListener('deviceorientation', handleOrientationRelative, true);
+            } else {
+              compassMode = false;
+              compassBtn.classList.remove('active');
+              alert("Permiso de brújula denegado.");
+            }
+          })
+          .catch(() => { orientationListening = false; });
+      } else if (typeof DeviceOrientationEvent !== 'undefined'){
+        orientationListening = true;
+        usingAbsoluteOrientation = false;
+        window.addEventListener('deviceorientationabsolute', handleOrientationAbsolute, true);
+        window.addEventListener('deviceorientation', handleOrientationRelative, true);
+      }
+    }
+
+    function stopOrientationListener(){
+      orientationListening = false;
+      usingAbsoluteOrientation = false;
+      window.removeEventListener('deviceorientationabsolute', handleOrientationAbsolute, true);
+      window.removeEventListener('deviceorientation', handleOrientationRelative, true);
+      deviceHeading = null;
     }
 
     function startGps(){
@@ -1443,6 +1594,8 @@ const DAILY_TRACKS = [
             gpsAccuracy.setRadius(accuracy);
           }
           gpsBtn.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#2aa5ff;box-shadow:0 0 0 2px rgba(42,165,255,.25);"></span> GPS activo';
+          // Start orientation so the heading cone is available even without auto-rotate
+          startOrientationListener();
           if (firstFix){
             firstFix = false;
             map.setView(ll, 13);
@@ -1457,6 +1610,7 @@ const DAILY_TRACKS = [
         { enableHighAccuracy:true, maximumAge:5000, timeout:15000 }
       );
     }
+
     function stopGps(){
       if (gpsWatchId !== null){
         navigator.geolocation.clearWatch(gpsWatchId);
@@ -1466,9 +1620,27 @@ const DAILY_TRACKS = [
       gpsMarker = null; gpsAccuracy = null;
       gpsBtn.classList.remove("active");
       gpsBtn.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#2aa5ff;box-shadow:0 0 0 2px rgba(42,165,255,.25);"></span> Mi GPS';
+      resetNorth();
+      stopOrientationListener();
     }
+
     gpsBtn.addEventListener("click", () => {
       if (gpsWatchId === null) startGps(); else stopGps();
+    });
+
+    // Compass button: toggle auto-rotate / reset to north
+    compassBtn.addEventListener("click", () => {
+      if (compassMode || currentBearing !== 0){
+        // Already tracking or rotated → reset to north
+        resetNorth();
+      } else {
+        // Enable auto-rotate
+        compassMode = true;
+        compassBtn.classList.add('active');
+        compassBtn.title = 'Brújula activa – pulsa para volver al norte';
+        startOrientationListener();
+        if (deviceHeading !== null) setMapBearing(deviceHeading);
+      }
     });
 
     // --- BASE LAYER SWITCHER ---
