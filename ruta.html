@@ -181,15 +181,20 @@
       width:14px; height:14px;
       transform-origin:7px 7px;
     }
+    /* Google Maps-style light beam from GPS dot */
     .gps-cone{
       position:absolute;
-      width:0; height:0;
-      border-left:7px solid transparent;
-      border-right:7px solid transparent;
-      border-bottom:24px solid rgba(42,165,255,.55);
-      top:-24px; left:0;
+      width:60px; height:60px;
+      /* bottom-center of div aligned with GPS dot center (7,7) */
+      left:-23px; top:-53px;
+      background:radial-gradient(ellipse at 50% 100%,
+        rgba(42,165,255,.55) 0%,
+        rgba(42,165,255,.25) 35%,
+        rgba(42,165,255,.06) 70%,
+        transparent 100%);
+      clip-path:polygon(50% 100%, 14% 0%, 86% 0%);
       display:none;
-      filter:blur(.5px);
+      pointer-events:none;
     }
 
     /* Compass button */
@@ -1460,7 +1465,6 @@ const DAILY_TRACKS = [
     let gpsAccuracy = null;
     let deviceHeading = null;       // degrees CW from north (compass)
     let currentBearing = 0;         // current map rotation (degrees CW)
-    let compassMode = false;        // true = auto-rotate map to heading
     let orientationListening = false;
     let usingAbsoluteOrientation = false;
 
@@ -1481,8 +1485,8 @@ const DAILY_TRACKS = [
       if (!cone || !gpsMarker) return;
       if (deviceHeading !== null){
         cone.style.display = 'block';
-        // wrapper rotates so the cone points in heading direction;
-        // subtract currentBearing so it stays correct regardless of map rotation
+        // Wrapper rotates so cone points to real heading direction.
+        // Subtract currentBearing so the visual stays correct when map is rotated.
         const visualAngle = deviceHeading - currentBearing;
         cone.parentElement.style.transform = `rotate(${visualAngle}deg)`;
       } else {
@@ -1490,46 +1494,41 @@ const DAILY_TRACKS = [
       }
     }
 
-    function setMapBearing(heading){
-      currentBearing = ((heading % 360) + 360) % 360;
+    // Apply a map bearing (manual rotation via touch).
+    // bearing = degrees CW from north shown at the top of screen.
+    function applyMapBearing(bearing){
+      currentBearing = ((bearing % 360) + 360) % 360;
       const mapEl = document.getElementById('map');
-      if (currentBearing < 0.5){
+      if (currentBearing < 0.3){
         mapEl.style.transform = '';
+        compassBtn.classList.remove('active');
       } else {
-        // rotate opposite to heading so your heading is at the top;
-        // scale 1.45 ≈ √2 to cover corners when rotated ~45°
+        // CSS rotate opposite direction: east at top → rotate map -90° so east reaches top.
+        // scale(1.45) ≈ √2 covers corners when rotated ~45°.
         mapEl.style.transform = `rotate(${-currentBearing}deg) scale(1.45)`;
+        compassBtn.classList.add('active');
       }
-      // needle points to where north actually is on screen
+      // Needle always points to real north on screen
       const needle = document.getElementById('compassNeedle');
       if (needle) needle.style.transform = `rotate(${currentBearing}deg)`;
       updateGpsHeadingCone();
     }
 
     function resetNorth(){
-      compassMode = false;
-      currentBearing = 0;
-      document.getElementById('map').style.transform = '';
-      const needle = document.getElementById('compassNeedle');
-      if (needle) needle.style.transform = 'rotate(0deg)';
-      compassBtn.classList.remove('active');
-      compassBtn.title = 'Brújula – activar seguimiento';
-      updateGpsHeadingCone();
+      applyMapBearing(0);
     }
 
+    // --- Device orientation: only for GPS cone, never auto-rotates map ---
     function handleOrientationData(e){
       let heading = null;
       if (e.webkitCompassHeading != null){
-        // iOS: already corrected for device orientation
-        heading = e.webkitCompassHeading;
-      } else if (e.alpha != null && (e.absolute === true)){
-        // Android absolute: alpha is CCW from north → convert to CW
-        heading = (360 - e.alpha + 360) % 360;
+        heading = e.webkitCompassHeading; // iOS: absolute magnetic heading
+      } else if (e.alpha != null && e.absolute === true){
+        heading = (360 - e.alpha + 360) % 360; // Android absolute
       }
       if (heading === null) return;
       deviceHeading = heading;
-      if (compassMode) setMapBearing(heading);
-      else updateGpsHeadingCone();
+      updateGpsHeadingCone();
     }
 
     function handleOrientationAbsolute(e){
@@ -1544,19 +1543,15 @@ const DAILY_TRACKS = [
       if (orientationListening) return;
       if (typeof DeviceOrientationEvent !== 'undefined' &&
           typeof DeviceOrientationEvent.requestPermission === 'function'){
-        // iOS 13+: must request permission
+        // iOS 13+: must request permission on user gesture
         DeviceOrientationEvent.requestPermission()
           .then(state => {
             if (state === 'granted'){
               orientationListening = true;
               window.addEventListener('deviceorientation', handleOrientationRelative, true);
-            } else {
-              compassMode = false;
-              compassBtn.classList.remove('active');
-              alert("Permiso de brújula denegado.");
             }
           })
-          .catch(() => { orientationListening = false; });
+          .catch(() => {});
       } else if (typeof DeviceOrientationEvent !== 'undefined'){
         orientationListening = true;
         usingAbsoluteOrientation = false;
@@ -1572,6 +1567,46 @@ const DAILY_TRACKS = [
       window.removeEventListener('deviceorientation', handleOrientationRelative, true);
       deviceHeading = null;
     }
+
+    // --- Two-finger rotation gesture on the map ---
+    (function setupRotationGesture(){
+      const mapEl = document.getElementById('map');
+      let t0Angle = null;       // angle between fingers at gesture start
+      let t0Bearing = 0;        // map bearing at gesture start
+      let rotating = false;
+
+      function fingersAngle(e){
+        if (e.touches.length < 2) return null;
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        return Math.atan2(dy, dx) * 180 / Math.PI;
+      }
+
+      mapEl.addEventListener('touchstart', e => {
+        if (e.touches.length === 2){
+          t0Angle = fingersAngle(e);
+          t0Bearing = currentBearing;
+          rotating = false;
+        }
+      }, { passive: true });
+
+      mapEl.addEventListener('touchmove', e => {
+        if (e.touches.length !== 2 || t0Angle === null) return;
+        const delta = fingersAngle(e) - t0Angle; // CW delta of finger line
+        // When fingers rotate CW (delta > 0), map bearing decreases
+        // (e.g. north goes left → west is at top → bearing 270°)
+        const newBearing = ((t0Bearing - delta) % 360 + 360) % 360;
+        if (!rotating && Math.abs(newBearing - t0Bearing) > 1.5) rotating = true;
+        if (rotating) applyMapBearing(newBearing);
+      }, { passive: true });
+
+      mapEl.addEventListener('touchend', e => {
+        if (e.touches.length < 2){
+          t0Angle = null;
+          rotating = false;
+        }
+      }, { passive: true });
+    })();
 
     function startGps(){
       if (!navigator.geolocation){
@@ -1594,8 +1629,7 @@ const DAILY_TRACKS = [
             gpsAccuracy.setRadius(accuracy);
           }
           gpsBtn.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#2aa5ff;box-shadow:0 0 0 2px rgba(42,165,255,.25);"></span> GPS activo';
-          // Start orientation so the heading cone is available even without auto-rotate
-          startOrientationListener();
+          startOrientationListener(); // start compass for the heading cone
           if (firstFix){
             firstFix = false;
             map.setView(ll, 13);
@@ -1628,19 +1662,9 @@ const DAILY_TRACKS = [
       if (gpsWatchId === null) startGps(); else stopGps();
     });
 
-    // Compass button: toggle auto-rotate / reset to north
+    // Compass button: only resets map to north when rotated
     compassBtn.addEventListener("click", () => {
-      if (compassMode || currentBearing !== 0){
-        // Already tracking or rotated → reset to north
-        resetNorth();
-      } else {
-        // Enable auto-rotate
-        compassMode = true;
-        compassBtn.classList.add('active');
-        compassBtn.title = 'Brújula activa – pulsa para volver al norte';
-        startOrientationListener();
-        if (deviceHeading !== null) setMapBearing(deviceHeading);
-      }
+      resetNorth();
     });
 
     // --- BASE LAYER SWITCHER ---
