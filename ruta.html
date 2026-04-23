@@ -1582,28 +1582,36 @@ const DAILY_TRACKS = [
         return Math.atan2(dy, dx) * 180 / Math.PI;
       }
 
+      const ROTATE_THRESHOLD = 10;   // degrees raw before rotation starts
+      const ROTATE_SENSITIVITY = 0.5; // 1:1 feels too twitchy; 0.5 = fingers must move 2× more
+
       mapEl.addEventListener('touchstart', e => {
         if (e.touches.length === 2){
           t0Angle = fingersAngle(e);
           t0Bearing = currentBearing;
           rotating = false;
+          // Disable CSS transition during gesture so it follows fingers without lag
+          mapEl.style.transition = 'none';
         }
       }, { passive: true });
 
       mapEl.addEventListener('touchmove', e => {
         if (e.touches.length !== 2 || t0Angle === null) return;
-        const delta = fingersAngle(e) - t0Angle; // CW delta of finger line
-        // When fingers rotate CW (delta > 0), map bearing decreases
-        // (e.g. north goes left → west is at top → bearing 270°)
-        const newBearing = ((t0Bearing - delta) % 360 + 360) % 360;
-        if (!rotating && Math.abs(newBearing - t0Bearing) > 1.5) rotating = true;
-        if (rotating) applyMapBearing(newBearing);
+        const rawDelta = fingersAngle(e) - t0Angle;
+        // Only start rotating after a clear intentional twist
+        if (!rotating && Math.abs(rawDelta) > ROTATE_THRESHOLD) rotating = true;
+        if (rotating){
+          const delta = rawDelta * ROTATE_SENSITIVITY;
+          applyMapBearing(((t0Bearing - delta) % 360 + 360) % 360);
+        }
       }, { passive: true });
 
       mapEl.addEventListener('touchend', e => {
         if (e.touches.length < 2){
           t0Angle = null;
           rotating = false;
+          // Restore smooth transition for reset-to-north animation
+          mapEl.style.transition = '';
         }
       }, { passive: true });
     })();
