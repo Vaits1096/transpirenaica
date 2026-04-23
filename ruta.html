@@ -91,6 +91,18 @@
       transition:transform .12s ease, background .15s ease, border-color .15s ease;
       display:inline-flex; align-items:center; gap:8px;
     }
+    /* Dot icon inside GPS button */
+    .gps-dot{
+      width:8px; height:8px;
+      border-radius:50%;
+      background:#2aa5ff;
+      box-shadow:0 0 0 2px rgba(42,165,255,.25);
+      flex-shrink:0;
+    }
+    /* Wrapper for right-side map controls */
+    .map-controls-right{
+      display:flex; align-items:center; gap:8px;
+    }
     .overlay-btn:hover{ transform:translateY(-1px); border-color:var(--border-strong); background:rgba(18,26,47,.9); }
     .overlay-btn.primary{
       background:linear-gradient(135deg, rgba(98,208,255,.22), rgba(139,255,176,.14));
@@ -412,7 +424,7 @@
     .profile-wrap svg{
       display:block; width:100%; height:260px;
       cursor:grab;
-      touch-action:pan-y;
+      touch-action:none;
       user-select:none;
       -webkit-user-select:none;
     }
@@ -556,9 +568,25 @@
     @media (max-width: 640px){
       .details-screen{ padding:28px 16px 40px; }
       .stats{ grid-template-columns:repeat(2, minmax(0,1fr)); }
-      .map-overlay-top{ flex-wrap:wrap; padding:10px; }
-      .baselayer button{ padding:6px 9px; }
       h1{ font-size:24px; }
+
+      /* Map overlay: no gradient, controls stack vertically on the right */
+      .map-overlay-top{
+        background:none;
+        padding:10px;
+        align-items:flex-start;
+      }
+      .map-controls-right{
+        flex-direction:column;
+        align-items:flex-end;
+        gap:6px;
+      }
+      /* Hide text labels → icon-only buttons */
+      .btn-label{ display:none; }
+      .overlay-btn{ padding:9px 11px; border-radius:10px; gap:0; }
+      /* Baselayer stacks vertically */
+      .baselayer{ flex-direction:column; border-radius:10px; }
+      .baselayer button{ padding:7px 12px; text-align:center; }
     }
   </style>
 </head>
@@ -576,25 +604,30 @@
 
       <div class="spacer"></div>
 
-      <button class="overlay-btn" id="fitAllBtn" title="Encuadrar toda la ruta">Ver ruta</button>
-      <button class="overlay-btn" id="gpsBtn" title="Mi ubicación GPS">
-        <span style="width:8px;height:8px;border-radius:50%;background:#2aa5ff;box-shadow:0 0 0 2px rgba(42,165,255,.25);"></span>
-        Mi GPS
-      </button>
-      <button class="compass-btn" id="compassBtn" title="Brújula – volver al norte / activar seguimiento">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,.18)" stroke-width="1.5"/>
-          <g id="compassNeedle">
-            <polygon points="12,3 10.5,12 13.5,12" fill="#ff4455"/>
-            <polygon points="12,21 10.5,12 13.5,12" fill="rgba(255,255,255,.4)"/>
-          </g>
-          <circle cx="12" cy="12" r="1.8" fill="rgba(255,255,255,.25)"/>
-        </svg>
-      </button>
-      <div class="baselayer" id="baseSwitch">
-        <button data-base="osm" class="active">Mapa</button>
-        <button data-base="topo">Topo</button>
-        <button data-base="sat">Satélite</button>
+      <div class="map-controls-right">
+        <button class="overlay-btn" id="fitAllBtn" title="Encuadrar toda la ruta">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="1" y="1" width="5" height="5"/><rect x="8" y="1" width="5" height="5"/><rect x="1" y="8" width="5" height="5"/><rect x="8" y="8" width="5" height="5"/></svg>
+          <span class="btn-label">Ver ruta</span>
+        </button>
+        <button class="overlay-btn" id="gpsBtn" title="Mi ubicación GPS">
+          <span class="gps-dot"></span>
+          <span class="btn-label">Mi GPS</span>
+        </button>
+        <button class="compass-btn" id="compassBtn" title="Brújula – volver al norte">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,.18)" stroke-width="1.5"/>
+            <g id="compassNeedle">
+              <polygon points="12,3 10.5,12 13.5,12" fill="#ff4455"/>
+              <polygon points="12,21 10.5,12 13.5,12" fill="rgba(255,255,255,.4)"/>
+            </g>
+            <circle cx="12" cy="12" r="1.8" fill="rgba(255,255,255,.25)"/>
+          </svg>
+        </button>
+        <div class="baselayer" id="baseSwitch">
+          <button data-base="osm" class="active">Mapa</button>
+          <button data-base="topo">Topo</button>
+          <button data-base="sat">Sat</button>
+        </div>
       </div>
     </div>
 
@@ -1469,6 +1502,7 @@ const DAILY_TRACKS = [
     let usingAbsoluteOrientation = false;
 
     const gpsBtn = document.getElementById("gpsBtn");
+    const gpsBtnLabel = gpsBtn.querySelector('.btn-label');
     const compassBtn = document.getElementById("compassBtn");
 
     function makeGpsIcon(){
@@ -1622,7 +1656,7 @@ const DAILY_TRACKS = [
         return;
       }
       gpsBtn.classList.add("active");
-      gpsBtn.textContent = "📍 Localizando…";
+      if (gpsBtnLabel) gpsBtnLabel.textContent = "Localizando…";
       let firstFix = true;
       gpsWatchId = navigator.geolocation.watchPosition(
         pos => {
@@ -1636,7 +1670,7 @@ const DAILY_TRACKS = [
             gpsAccuracy.setLatLng(ll);
             gpsAccuracy.setRadius(accuracy);
           }
-          gpsBtn.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#2aa5ff;box-shadow:0 0 0 2px rgba(42,165,255,.25);"></span> GPS activo';
+          if (gpsBtnLabel) gpsBtnLabel.textContent = "GPS activo";
           startOrientationListener(); // start compass for the heading cone
           if (firstFix){
             firstFix = false;
@@ -1645,7 +1679,7 @@ const DAILY_TRACKS = [
         },
         err => {
           gpsBtn.classList.remove("active");
-          gpsBtn.textContent = "📍 Mi GPS";
+          if (gpsBtnLabel) gpsBtnLabel.textContent = "Mi GPS";
           alert("No se pudo obtener ubicación: " + err.message);
           gpsWatchId = null;
         },
@@ -1661,7 +1695,7 @@ const DAILY_TRACKS = [
       gpsLayer.clearLayers();
       gpsMarker = null; gpsAccuracy = null;
       gpsBtn.classList.remove("active");
-      gpsBtn.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#2aa5ff;box-shadow:0 0 0 2px rgba(42,165,255,.25);"></span> Mi GPS';
+      if (gpsBtnLabel) gpsBtnLabel.textContent = "Mi GPS";
       resetNorth();
       stopOrientationListener();
     }
@@ -1709,24 +1743,79 @@ const DAILY_TRACKS = [
       const factor = ev.deltaY < 0 ? PROFILE_ZOOM_FACTOR : 1 / PROFILE_ZOOM_FACTOR;
       zoomProfileAt(centerKm, factor);
     }, { passive: false });
+    // Active pointers map and pinch state for multi-touch zoom
+    const profileActivePointers = new Map();
+    const profilePinch = { active:false, dist0:0, span0:0, viewStart0:0, midKm:0 };
+
+    function profilePinchDist(){
+      const pts = [...profileActivePointers.values()];
+      const dx = pts[1].clientX - pts[0].clientX;
+      const dy = pts[1].clientY - pts[0].clientY;
+      return Math.sqrt(dx*dx + dy*dy);
+    }
+    function profilePinchMidX(){
+      const pts = [...profileActivePointers.values()];
+      return (pts[0].clientX + pts[1].clientX) / 2;
+    }
+
     profileSvg.addEventListener("pointerdown", ev => {
       if (ev.pointerType === "mouse" && ev.button !== 0) return;
-      startProfileDrag(ev.pointerId, ev.clientX);
+      profileActivePointers.set(ev.pointerId, { clientX:ev.clientX, clientY:ev.clientY });
       profileSvg.setPointerCapture(ev.pointerId);
+
+      if (profileActivePointers.size === 2){
+        // Cancel ongoing drag and start pinch
+        endProfileDrag();
+        profilePinch.dist0 = profilePinchDist();
+        profilePinch.span0 = profileView.endKm - profileView.startKm;
+        profilePinch.viewStart0 = profileView.startKm;
+        profilePinch.midKm = profileClientXToKm(profilePinchMidX());
+        profilePinch.active = true;
+      } else if (profileActivePointers.size === 1){
+        startProfileDrag(ev.pointerId, ev.clientX);
+      }
     });
+
     profileSvg.addEventListener("pointermove", ev => {
-      if (!profileDrag.active || ev.pointerId !== profileDrag.pointerId) return;
-      moveProfileDrag(ev.clientX);
+      if (!profileActivePointers.has(ev.pointerId)) return;
+      profileActivePointers.set(ev.pointerId, { clientX:ev.clientX, clientY:ev.clientY });
+
+      if (profilePinch.active && profileActivePointers.size === 2){
+        const dist = profilePinchDist();
+        if (profilePinch.dist0 < 5) return;
+        // scale >1 = fingers closer = zoom out; <1 = fingers farther = zoom in
+        const scale = profilePinch.dist0 / dist;
+        const total = getProfileTotalKm();
+        const newSpan = Math.max(
+          Math.min(PROFILE_MIN_WINDOW_KM, total),
+          Math.min(total, profilePinch.span0 * scale)
+        );
+        // Keep the pinch midpoint km at same relative position in view
+        const ratio = profilePinch.span0 > 0
+          ? (profilePinch.midKm - profilePinch.viewStart0) / profilePinch.span0
+          : 0.5;
+        const newStart = profilePinch.midKm - ratio * newSpan;
+        setProfileView(newStart, newStart + newSpan);
+      } else if (profileDrag.active && ev.pointerId === profileDrag.pointerId){
+        moveProfileDrag(ev.clientX);
+      }
     });
+
     profileSvg.addEventListener("pointerup", ev => {
-      if (!profileDrag.active || ev.pointerId !== profileDrag.pointerId) return;
+      profileActivePointers.delete(ev.pointerId);
       if (profileSvg.hasPointerCapture(ev.pointerId)) profileSvg.releasePointerCapture(ev.pointerId);
-      endProfileDrag();
+      if (profilePinch.active){
+        if (profileActivePointers.size < 2) profilePinch.active = false;
+      } else if (profileDrag.active && ev.pointerId === profileDrag.pointerId){
+        endProfileDrag();
+      }
     });
+
     profileSvg.addEventListener("pointercancel", ev => {
-      if (!profileDrag.active || ev.pointerId !== profileDrag.pointerId) return;
+      profileActivePointers.delete(ev.pointerId);
       if (profileSvg.hasPointerCapture(ev.pointerId)) profileSvg.releasePointerCapture(ev.pointerId);
-      endProfileDrag();
+      profilePinch.active = false;
+      if (profileDrag.active && ev.pointerId === profileDrag.pointerId) endProfileDrag();
     });
     profileSvg.addEventListener("click", ev => {
       if (!profileSuppressClick) return;
