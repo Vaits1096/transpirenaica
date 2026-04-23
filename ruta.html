@@ -1637,6 +1637,8 @@ const DAILY_TRACKS = [
       }
     }
 
+    const MAP_ROTATION_SCALE = 1.45; // CSS scale applied when rotated
+
     // Apply a map bearing (manual rotation via touch).
     // bearing = degrees CW from north shown at the top of screen.
     function applyMapBearing(bearing){
@@ -1645,11 +1647,15 @@ const DAILY_TRACKS = [
       if (currentBearing < 0.3){
         mapEl.style.transform = '';
         compassBtn.classList.remove('active');
+        // Re-enable Leaflet's native drag when north-up
+        if (map.dragging && !map.dragging.enabled()) map.dragging.enable();
       } else {
         // CSS rotate opposite direction: east at top → rotate map -90° so east reaches top.
         // scale(1.45) ≈ √2 covers corners when rotated ~45°.
-        mapEl.style.transform = `rotate(${-currentBearing}deg) scale(1.45)`;
+        mapEl.style.transform = `rotate(${-currentBearing}deg) scale(${MAP_ROTATION_SCALE})`;
         compassBtn.classList.add('active');
+        // Disable Leaflet's drag so our rotated pan handler takes over
+        if (map.dragging && map.dragging.enabled()) map.dragging.disable();
       }
       // Needle always points to real north on screen
       const needle = document.getElementById('compassNeedle');
@@ -1757,6 +1763,57 @@ const DAILY_TRACKS = [
           mapEl.style.transition = '';
         }
       }, { passive: true });
+    })();
+
+    // --- Rotated pan gesture (only active when currentBearing !== 0) ---
+    // When the map is CSS-rotated, Leaflet's own drag thinks "up on screen"
+    // still means "north", so panning goes in the wrong direction. We
+    // disable Leaflet's drag (in applyMapBearing) and pan manually here,
+    // rotating the finger/mouse delta by +bearing so it lands in map space.
+    (function setupRotatedPan(){
+      const mapEl = document.getElementById('map');
+      const activeTouches = new Set();
+      let panning = false;
+      let panId = null;
+      let lastX = 0, lastY = 0;
+
+      function rotateScreenDelta(dx, dy, bearingDeg){
+        const r = bearingDeg * Math.PI / 180;
+        const c = Math.cos(r), s = Math.sin(r);
+        // Rotation matrix that maps screen-space delta → unrotated map delta
+        return [dx * c - dy * s, dx * s + dy * c];
+      }
+
+      mapEl.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'touch') activeTouches.add(e.pointerId);
+        // Only handle pan when the map is rotated; otherwise Leaflet handles it
+        if (currentBearing < 0.3) return;
+        // Ignore secondary touches (two-finger gesture is rotation/pinch)
+        if (activeTouches.size >= 2){ panning = false; return; }
+        panning = true;
+        panId = e.pointerId;
+        lastX = e.clientX; lastY = e.clientY;
+      }, { passive: true });
+
+      mapEl.addEventListener('pointermove', e => {
+        if (!panning || e.pointerId !== panId) return;
+        if (activeTouches.size >= 2){ panning = false; return; }
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        lastX = e.clientX; lastY = e.clientY;
+        const [rx, ry] = rotateScreenDelta(dx, dy, currentBearing);
+        // Divide by CSS scale so finger movement matches map distance 1:1.
+        // Pan is the opposite of the finger drag direction.
+        map.panBy([-rx / MAP_ROTATION_SCALE, -ry / MAP_ROTATION_SCALE], { animate: false });
+      }, { passive: true });
+
+      function endPan(e){
+        if (e.pointerType === 'touch') activeTouches.delete(e.pointerId);
+        if (e.pointerId === panId){ panning = false; panId = null; }
+      }
+      mapEl.addEventListener('pointerup', endPan, { passive: true });
+      mapEl.addEventListener('pointercancel', endPan, { passive: true });
+      mapEl.addEventListener('pointerleave', endPan, { passive: true });
     })();
 
     function startGps(){
