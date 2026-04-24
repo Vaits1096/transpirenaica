@@ -1035,6 +1035,11 @@ const DAILY_TRACKS = [
       startViewStart: 0,
       startViewEnd: 0
     };
+    let profileInspect = {
+      active: false,
+      pointerId: null
+    };
+    let profileTooltipAtClientX = null;
     let profileSuppressClick = false;
 
     if (profileHint){
@@ -1434,6 +1439,33 @@ const DAILY_TRACKS = [
       return rect.width * ((layout.width - layout.padL - layout.padR) / layout.width);
     }
 
+    function isProfileInspectTarget(target){
+      return !!(target && target.classList && (
+        target.classList.contains("profile-hit") ||
+        target.classList.contains("profile-dot")
+      ));
+    }
+
+    function startProfileInspect(pointerId, clientX){
+      profileInspect.active = true;
+      profileInspect.pointerId = pointerId;
+      profileSuppressClick = true;
+      profileSvg.classList.remove("is-dragging");
+      if (profileTooltipAtClientX) profileTooltipAtClientX(clientX);
+    }
+
+    function moveProfileInspect(clientX){
+      if (!profileInspect.active || !profileTooltipAtClientX) return;
+      profileTooltipAtClientX(clientX);
+    }
+
+    function endProfileInspect(){
+      if (!profileInspect.active) return;
+      profileInspect.active = false;
+      profileInspect.pointerId = null;
+      setTimeout(() => { profileSuppressClick = false; }, 0);
+    }
+
     function startProfileDrag(pointerId, clientX){
       profileDrag.active = true;
       profileDrag.moved = false;
@@ -1549,6 +1581,7 @@ const DAILY_TRACKS = [
         const day = days.find(d => d.day === point.day);
         showProfileTooltip(point, "Perfil real", day ? day.title : point.label);
       }
+      profileTooltipAtClientX = showProfileTooltipAtClientX;
 
       const gridStep = (maxE - minE) >= 2000 ? 500 : 250;
       const gridLines = [];
@@ -1625,28 +1658,14 @@ const DAILY_TRACKS = [
         ${xLabels}
       `;
 
-      profileSvg.onpointerdown = ev => {
-        if (ev.pointerType === "mouse" && ev.button !== 0) return;
-        if (profileActivePointers.size > 1) return;
-        showProfileTooltipAtClientX(ev.clientX);
-      };
-
       profileSvg.querySelectorAll(".profile-seg").forEach(el => {
-        el.style.cursor = "pointer";
-        el.addEventListener("click", () => {
-          if (profileSuppressClick) return;
-          focusDay(Number(el.dataset.day));
-        });
+        el.style.cursor = "grab";
       });
 
       profileSvg.querySelectorAll(".profile-hit").forEach(el => {
         const day = days.find(d => d.day === Number(el.dataset.day));
         if (!day) return;
-        el.style.cursor = "pointer";
-        el.addEventListener("click", () => {
-          if (profileSuppressClick) return;
-          focusDay(day.day);
-        });
+        el.style.cursor = "crosshair";
         el.addEventListener("mousemove", ev => {
           if (profileDrag.active) return;
           const rect = profileSvg.getBoundingClientRect();
@@ -1654,14 +1673,8 @@ const DAILY_TRACKS = [
           const point = findNearestProfilePoint(day.profile, xToKm(svgX));
           showProfileTooltip(point, "Perfil real", day.title);
         });
-        el.addEventListener("pointerdown", ev => {
-          const rect = profileSvg.getBoundingClientRect();
-          const svgX = ((ev.clientX - rect.left) / rect.width) * layout.width;
-          const point = findNearestProfilePoint(day.profile, xToKm(svgX));
-          showProfileTooltip(point, "Perfil real", day.title);
-        });
         el.addEventListener("pointerleave", ev => {
-          if (ev.pointerType === "mouse") hideProfileTooltip();
+          if (ev.pointerType === "mouse" && !profileInspect.active) hideProfileTooltip();
         });
       });
 
@@ -1673,25 +1686,18 @@ const DAILY_TRACKS = [
           : marker.type === "peak-end"
             ? "Punto alto y fin jornada"
             : "Fin jornada";
-        el.style.cursor = "pointer";
-        el.addEventListener("click", () => {
-          if (profileSuppressClick) return;
-          focusDay(marker.point.day);
-        });
+        el.style.cursor = "crosshair";
         el.addEventListener("mouseenter", () => {
           if (profileDrag.active) return;
           showProfileTooltip(marker.point, kind, marker.point.label);
         });
-        el.addEventListener("pointerdown", () => {
-          showProfileTooltip(marker.point, kind, marker.point.label);
-        });
         el.addEventListener("pointerleave", ev => {
-          if (ev.pointerType === "mouse") hideProfileTooltip();
+          if (ev.pointerType === "mouse" && !profileInspect.active) hideProfileTooltip();
         });
       });
 
       profileSvg.onpointerleave = ev => {
-        if (ev.pointerType === "mouse") hideProfileTooltip();
+        if (ev.pointerType === "mouse" && !profileInspect.active) hideProfileTooltip();
       };
       updateProfileControls();
     }
@@ -1985,13 +1991,18 @@ const DAILY_TRACKS = [
       if (profileActivePointers.size === 2){
         // Cancel ongoing drag and start pinch
         endProfileDrag();
+        endProfileInspect();
         profilePinch.dist0 = profilePinchDist();
         profilePinch.span0 = profileView.endKm - profileView.startKm;
         profilePinch.viewStart0 = profileView.startKm;
         profilePinch.midKm = profileClientXToKm(profilePinchMidX());
         profilePinch.active = true;
       } else if (profileActivePointers.size === 1){
-        startProfileDrag(ev.pointerId, ev.clientX);
+        if (isProfileInspectTarget(ev.target)){
+          startProfileInspect(ev.pointerId, ev.clientX);
+        } else {
+          startProfileDrag(ev.pointerId, ev.clientX);
+        }
       }
     });
 
@@ -2017,6 +2028,8 @@ const DAILY_TRACKS = [
         setProfileView(newStart, newStart + newSpan);
       } else if (profileDrag.active && ev.pointerId === profileDrag.pointerId){
         moveProfileDrag(ev.clientX);
+      } else if (profileInspect.active && ev.pointerId === profileInspect.pointerId){
+        moveProfileInspect(ev.clientX);
       }
     });
 
@@ -2027,6 +2040,8 @@ const DAILY_TRACKS = [
         if (profileActivePointers.size < 2) profilePinch.active = false;
       } else if (profileDrag.active && ev.pointerId === profileDrag.pointerId){
         endProfileDrag();
+      } else if (profileInspect.active && ev.pointerId === profileInspect.pointerId){
+        endProfileInspect();
       }
     });
 
@@ -2035,6 +2050,7 @@ const DAILY_TRACKS = [
       if (profileSvg.hasPointerCapture(ev.pointerId)) profileSvg.releasePointerCapture(ev.pointerId);
       profilePinch.active = false;
       if (profileDrag.active && ev.pointerId === profileDrag.pointerId) endProfileDrag();
+      if (profileInspect.active && ev.pointerId === profileInspect.pointerId) endProfileInspect();
     });
     profileSvg.addEventListener("click", ev => {
       if (!profileSuppressClick) return;
