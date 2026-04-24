@@ -474,7 +474,9 @@
       box-shadow:var(--shadow);
       transform:translate(-50%, -120%);
       opacity:0; transition:opacity .12s ease;
-      white-space:nowrap;
+      max-width:min(320px, calc(100% - 24px));
+      white-space:normal;
+      z-index:20;
     }
     .profile-tooltip.visible{ opacity:1; }
     .profile-tooltip strong{ display:block; font-size:13px; margin-bottom:3px; }
@@ -602,6 +604,41 @@
       h1{ font-size:24px; }
       .map-overlay-top{ padding:10px 12px; gap:8px; }
       .map-controls-right{ gap:6px; }
+      .profile-wrap{
+        padding:12px 10px 10px;
+        border-radius:14px;
+      }
+      .profile-toolbar{
+        align-items:flex-start;
+        gap:8px;
+      }
+      .profile-actions{
+        gap:6px;
+      }
+      .profile-btn{
+        min-width:34px;
+        padding:8px 9px;
+        border-radius:9px;
+      }
+      .profile-status{
+        width:100%;
+        font-size:11px;
+      }
+      .profile-wrap svg{
+        height:300px;
+      }
+      .profile-wrap .hint{
+        font-size:11px;
+        line-height:1.45;
+      }
+      .profile-tooltip{
+        font-size:11px;
+        line-height:1.35;
+        padding:7px 9px;
+      }
+      .profile-tooltip strong{
+        font-size:12px;
+      }
     }
   </style>
 </head>
@@ -902,6 +939,23 @@ const DAILY_TRACKS = [
     const PROFILE_ZOOM_FACTOR = 0.72;
     const PROFILE_PAN_FACTOR = 0.35;
     const PROFILE_DRAG_THRESHOLD_PX = 6;
+
+    function getProfileLayout(){
+      const rect = profileSvg.getBoundingClientRect();
+      const width = Math.max(300, Math.round(rect.width || profileSvg.clientWidth || PROFILE_W));
+      const compact = width < 520;
+      return {
+        width,
+        height: compact ? 300 : PROFILE_H,
+        padL: compact ? 46 : PROFILE_PAD_L,
+        padR: compact ? 12 : PROFILE_PAD_R,
+        padT: compact ? 18 : PROFILE_PAD_T,
+        padB: compact ? 46 : PROFILE_PAD_B,
+        gridFont: compact ? 11 : 10,
+        axisFont: compact ? 10.5 : 10,
+        compact
+      };
+    }
 
     // --- Haversine for day km ---
     function hav(a, b){
@@ -1367,15 +1421,17 @@ const DAILY_TRACKS = [
 
     function profileClientXToKm(clientX){
       const rect = profileSvg.getBoundingClientRect();
-      const plotW = PROFILE_W - PROFILE_PAD_L - PROFILE_PAD_R;
-      const svgX = ((clientX - rect.left) / rect.width) * PROFILE_W;
-      const ratio = Math.max(0, Math.min(1, (svgX - PROFILE_PAD_L) / plotW));
+      const layout = getProfileLayout();
+      const plotW = layout.width - layout.padL - layout.padR;
+      const svgX = ((clientX - rect.left) / rect.width) * layout.width;
+      const ratio = Math.max(0, Math.min(1, (svgX - layout.padL) / plotW));
       return profileView.startKm + ratio * (profileView.endKm - profileView.startKm);
     }
 
     function getProfilePlotClientWidth(){
       const rect = profileSvg.getBoundingClientRect();
-      return rect.width * ((PROFILE_W - PROFILE_PAD_L - PROFILE_PAD_R) / PROFILE_W);
+      const layout = getProfileLayout();
+      return rect.width * ((layout.width - layout.padL - layout.padR) / layout.width);
     }
 
     function startProfileDrag(pointerId, clientX){
@@ -1386,7 +1442,6 @@ const DAILY_TRACKS = [
       profileDrag.startViewStart = profileView.startKm;
       profileDrag.startViewEnd = profileView.endKm;
       profileSvg.classList.add("is-dragging");
-      profileTip.classList.remove("visible");
     }
 
     function moveProfileDrag(clientX){
@@ -1399,6 +1454,7 @@ const DAILY_TRACKS = [
       if (!profileDrag.moved && Math.abs(deltaPx) >= PROFILE_DRAG_THRESHOLD_PX){
         profileDrag.moved = true;
         profileSuppressClick = true;
+        profileTip.classList.remove("visible");
       }
       if (!profileDrag.moved) return;
       const span = profileDrag.startViewEnd - profileDrag.startViewStart;
@@ -1441,14 +1497,18 @@ const DAILY_TRACKS = [
       const minE = Math.floor((Math.min(...elevs) - 100) / 100) * 100;
       const maxE = Math.ceil((Math.max(...elevs) + 100) / 100) * 100;
       const elevRange = Math.max(1, maxE - minE);
+      const layout = getProfileLayout();
 
-      const plotW = PROFILE_W - PROFILE_PAD_L - PROFILE_PAD_R;
-      const xScale = km => PROFILE_PAD_L + ((km - viewStart) / viewSpan) * plotW;
+      profileSvg.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
+
+      const plotW = layout.width - layout.padL - layout.padR;
+      const plotH = layout.height - layout.padT - layout.padB;
+      const xScale = km => layout.padL + ((km - viewStart) / viewSpan) * plotW;
       const xToKm = x => {
-        const ratio = Math.max(0, Math.min(1, (x - PROFILE_PAD_L) / plotW));
+        const ratio = Math.max(0, Math.min(1, (x - layout.padL) / plotW));
         return viewStart + ratio * viewSpan;
       };
-      const yScale = elev => PROFILE_PAD_T + (1 - (elev - minE) / elevRange) * (PROFILE_H - PROFILE_PAD_T - PROFILE_PAD_B);
+      const yScale = elev => layout.padT + (1 - (elev - minE) / elevRange) * plotH;
 
       function toLinePath(points){
         return `M ${points.map(p => `${xScale(p.km)},${yScale(p.elev)}`).join(" L ")}`;
@@ -1457,22 +1517,37 @@ const DAILY_TRACKS = [
       function toAreaPath(points){
         const start = points[0];
         const end = points[points.length - 1];
-        return `M ${xScale(start.km)},${PROFILE_H - PROFILE_PAD_B} L ${points.map(p => `${xScale(p.km)},${yScale(p.elev)}`).join(" L ")} L ${xScale(end.km)},${PROFILE_H - PROFILE_PAD_B} Z`;
+        return `M ${xScale(start.km)},${layout.height - layout.padB} L ${points.map(p => `${xScale(p.km)},${yScale(p.elev)}`).join(" L ")} L ${xScale(end.km)},${layout.height - layout.padB} Z`;
       }
 
       function showProfileTooltip(point, kind, label){
         const svgRect = profileSvg.getBoundingClientRect();
         const wrapRect = profileSvg.parentElement.getBoundingClientRect();
-        const left = ((xScale(point.km) / PROFILE_W) * svgRect.width) + (svgRect.left - wrapRect.left);
-        const top = ((yScale(point.elev) / PROFILE_H) * svgRect.height) + (svgRect.top - wrapRect.top);
+        const rawLeft = ((xScale(point.km) / layout.width) * svgRect.width) + (svgRect.left - wrapRect.left);
+        const rawTop = ((yScale(point.elev) / layout.height) * svgRect.height) + (svgRect.top - wrapRect.top);
+        profileTip.innerHTML = `<strong>Día ${point.day} · ${kind}</strong><div class="pmeta">${label}<br>km ${formatProfileKm(point.km)} total · km ${formatProfileKm(point.dayKm)} del día · alt. ${formatProfileElev(point.elev)}</div>`;
+        const tipWidth = profileTip.offsetWidth || 220;
+        const tipHeight = profileTip.offsetHeight || 58;
+        const left = Math.max(8 + tipWidth / 2, Math.min(wrapRect.width - 8 - tipWidth / 2, rawLeft));
+        const shouldPlaceBelow = rawTop - tipHeight - 12 < 0;
         profileTip.style.left = `${left}px`;
-        profileTip.style.top = `${top}px`;
-        profileTip.innerHTML = `<strong>Día ${point.day} · ${kind}</strong><div class="pmeta">${label}<br>km ${formatProfileKm(point.dayKm)} del día · ${formatProfileElev(point.elev)}</div>`;
+        profileTip.style.top = `${rawTop}px`;
+        profileTip.style.transform = shouldPlaceBelow ? "translate(-50%, 12px)" : "translate(-50%, calc(-100% - 10px))";
         profileTip.classList.add("visible");
       }
 
       function hideProfileTooltip(){
         profileTip.classList.remove("visible");
+      }
+
+      function showProfileTooltipAtClientX(clientX){
+        if (!visiblePoints.length) return;
+        const rect = profileSvg.getBoundingClientRect();
+        const svgX = ((clientX - rect.left) / rect.width) * layout.width;
+        if (svgX < layout.padL || svgX > layout.width - layout.padR) return;
+        const point = findNearestProfilePoint(visiblePoints, xToKm(svgX));
+        const day = days.find(d => d.day === point.day);
+        showProfileTooltip(point, "Perfil real", day ? day.title : point.label);
       }
 
       const gridStep = (maxE - minE) >= 2000 ? 500 : 250;
@@ -1496,7 +1571,7 @@ const DAILY_TRACKS = [
         lineSvg += `<path d="${toLinePath(visibleProfile)}" fill="none" stroke="#eaf1ff" stroke-opacity="${muted ? 0.22 : 0.92}" stroke-width="${activeDay === d.day ? 2.4 : 1.8}" stroke-linejoin="round" stroke-linecap="round"/>`;
         hitSvg += `<path d="${toLinePath(visibleProfile)}" fill="none" stroke="transparent" stroke-width="16" stroke-linejoin="round" stroke-linecap="round" data-day="${d.day}" class="profile-hit"/>`;
         if (d.profileEnd.km >= viewStart && d.profileEnd.km <= viewEnd){
-          endsSvg += `<line x1="${xScale(d.profileEnd.km)}" x2="${xScale(d.profileEnd.km)}" y1="${PROFILE_PAD_T}" y2="${PROFILE_H-PROFILE_PAD_B}" stroke="rgba(255,255,255,.06)" stroke-dasharray="2 4"/>`;
+          endsSvg += `<line x1="${xScale(d.profileEnd.km)}" x2="${xScale(d.profileEnd.km)}" y1="${layout.padT}" y2="${layout.height-layout.padB}" stroke="rgba(255,255,255,.06)" stroke-dasharray="2 4"/>`;
         }
         if (d.profilePeak.km >= viewStart && d.profilePeak.km <= viewEnd){
           markers.push({ point:d.profilePeak, type:d.profilePeak === d.profileEnd ? "peak-end" : "peak" });
@@ -1508,21 +1583,27 @@ const DAILY_TRACKS = [
 
       let yLabels = "";
       gridLines.forEach(g => {
-        yLabels += `<line x1="${PROFILE_PAD_L}" x2="${PROFILE_W-PROFILE_PAD_R}" y1="${g.y}" y2="${g.y}" stroke="rgba(255,255,255,.05)"/>`;
-        yLabels += `<text x="${PROFILE_PAD_L-6}" y="${g.y+3}" fill="#9fb0d3" font-size="10" text-anchor="end">${g.elev} m</text>`;
+        yLabels += `<line x1="${layout.padL}" x2="${layout.width-layout.padR}" y1="${g.y}" y2="${g.y}" stroke="rgba(255,255,255,.05)"/>`;
+        yLabels += `<text x="${layout.padL-6}" y="${g.y+3}" fill="#9fb0d3" font-size="${layout.gridFont}" text-anchor="end">${g.elev} m</text>`;
       });
 
       let xLabels = "";
+      let lastDayLabelX = -Infinity;
+      const minDayLabelGap = layout.compact ? 34 : 22;
       days.forEach(d => {
         const visibleProfile = clipProfileToRange(d.profile, viewStart, viewEnd);
         if (visibleProfile.length < 2) return;
         const mid = (visibleProfile[0].km + visibleProfile[visibleProfile.length - 1].km) / 2;
-        xLabels += `<text x="${xScale(mid)}" y="${PROFILE_H-PROFILE_PAD_B+16}" fill="#9fb0d3" font-size="10" text-anchor="middle">D${d.day}</text>`;
+        const midX = xScale(mid);
+        if (!layout.compact || activeDay === d.day || midX - lastDayLabelX >= minDayLabelGap){
+          xLabels += `<text x="${midX}" y="${layout.height-layout.padB+16}" fill="#9fb0d3" font-size="${layout.axisFont}" text-anchor="middle">D${d.day}</text>`;
+          lastDayLabelX = midX;
+        }
       });
-      const leftLabel = viewStart <= 0.05 ? days[0].from : `km ${formatProfileKm(viewStart)}`;
-      const rightLabel = viewEnd >= total - 0.05 ? days[days.length-1].to : `km ${formatProfileKm(viewEnd)}`;
-      xLabels += `<text x="${xScale(viewStart)}" y="${PROFILE_H-4}" fill="#62d0ff" font-size="10" text-anchor="start">${leftLabel}</text>`;
-      xLabels += `<text x="${xScale(viewEnd)}" y="${PROFILE_H-4}" fill="#62d0ff" font-size="10" text-anchor="end">${rightLabel}</text>`;
+      const leftLabel = layout.compact || viewStart > 0.05 ? `km ${formatProfileKm(viewStart)}` : days[0].from;
+      const rightLabel = layout.compact || viewEnd < total - 0.05 ? `km ${formatProfileKm(viewEnd)}` : days[days.length-1].to;
+      xLabels += `<text x="${xScale(viewStart)}" y="${layout.height-8}" fill="#62d0ff" font-size="${layout.axisFont}" text-anchor="start">${leftLabel}</text>`;
+      xLabels += `<text x="${xScale(viewEnd)}" y="${layout.height-8}" fill="#62d0ff" font-size="${layout.axisFont}" text-anchor="end">${rightLabel}</text>`;
 
       let dotsSvg = "";
       markers.forEach((marker, idx) => {
@@ -1534,7 +1615,7 @@ const DAILY_TRACKS = [
       });
 
       profileSvg.innerHTML = `
-        <rect x="0" y="0" width="${PROFILE_W}" height="${PROFILE_H}" fill="transparent"/>
+        <rect x="0" y="0" width="${layout.width}" height="${layout.height}" fill="transparent"/>
         ${yLabels}
         ${endsSvg}
         ${areaSvg}
@@ -1543,6 +1624,12 @@ const DAILY_TRACKS = [
         ${dotsSvg}
         ${xLabels}
       `;
+
+      profileSvg.onpointerdown = ev => {
+        if (ev.pointerType === "mouse" && ev.button !== 0) return;
+        if (profileActivePointers.size > 1) return;
+        showProfileTooltipAtClientX(ev.clientX);
+      };
 
       profileSvg.querySelectorAll(".profile-seg").forEach(el => {
         el.style.cursor = "pointer";
@@ -1563,11 +1650,19 @@ const DAILY_TRACKS = [
         el.addEventListener("mousemove", ev => {
           if (profileDrag.active) return;
           const rect = profileSvg.getBoundingClientRect();
-          const svgX = ((ev.clientX - rect.left) / rect.width) * PROFILE_W;
+          const svgX = ((ev.clientX - rect.left) / rect.width) * layout.width;
           const point = findNearestProfilePoint(day.profile, xToKm(svgX));
           showProfileTooltip(point, "Perfil real", day.title);
         });
-        el.addEventListener("mouseleave", hideProfileTooltip);
+        el.addEventListener("pointerdown", ev => {
+          const rect = profileSvg.getBoundingClientRect();
+          const svgX = ((ev.clientX - rect.left) / rect.width) * layout.width;
+          const point = findNearestProfilePoint(day.profile, xToKm(svgX));
+          showProfileTooltip(point, "Perfil real", day.title);
+        });
+        el.addEventListener("pointerleave", ev => {
+          if (ev.pointerType === "mouse") hideProfileTooltip();
+        });
       });
 
       profileSvg.querySelectorAll(".profile-dot").forEach(el => {
@@ -1587,10 +1682,17 @@ const DAILY_TRACKS = [
           if (profileDrag.active) return;
           showProfileTooltip(marker.point, kind, marker.point.label);
         });
-        el.addEventListener("mouseleave", hideProfileTooltip);
+        el.addEventListener("pointerdown", () => {
+          showProfileTooltip(marker.point, kind, marker.point.label);
+        });
+        el.addEventListener("pointerleave", ev => {
+          if (ev.pointerType === "mouse") hideProfileTooltip();
+        });
       });
 
-      profileSvg.onmouseleave = hideProfileTooltip;
+      profileSvg.onpointerleave = ev => {
+        if (ev.pointerType === "mouse") hideProfileTooltip();
+      };
       updateProfileControls();
     }
 
