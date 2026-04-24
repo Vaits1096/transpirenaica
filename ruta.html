@@ -223,6 +223,7 @@
       border-radius:50%;
       background:#2aa5ff;
       box-shadow:0 0 0 2px #fff, 0 0 10px rgba(42,165,255,.6);
+      z-index:2;
     }
     .gps-pulse::after{
       content:""; position:absolute; inset:-8px;
@@ -244,9 +245,9 @@
     /* Google Maps-style light beam from GPS dot */
     .gps-cone{
       position:absolute;
-      width:60px; height:60px;
+      width:64px; height:64px;
       /* bottom-center of div aligned with GPS dot center (7,7) */
-      left:-23px; top:-53px;
+      left:-25px; top:-57px;
       background:radial-gradient(ellipse at 50% 100%,
         rgba(42,165,255,.55) 0%,
         rgba(42,165,255,.25) 35%,
@@ -255,6 +256,26 @@
       clip-path:polygon(50% 100%, 14% 0%, 86% 0%);
       display:none;
       pointer-events:none;
+      z-index:1;
+    }
+    .gps-heading-arrow{
+      position:absolute;
+      left:1px; top:-18px;
+      width:12px; height:22px;
+      display:none;
+      pointer-events:none;
+      z-index:3;
+      filter:drop-shadow(0 0 4px rgba(42,165,255,.85));
+    }
+    .gps-heading-arrow::before{
+      content:"";
+      position:absolute; inset:0;
+      background:#2aa5ff;
+      clip-path:polygon(50% 0%, 100% 62%, 64% 54%, 64% 100%, 36% 100%, 36% 54%, 0% 62%);
+    }
+    .gps-wrapper.heading-ready .gps-cone,
+    .gps-wrapper.heading-ready .gps-heading-arrow{
+      display:block;
     }
 
     /* Compass needle rotation – centre of 16×16 viewBox */
@@ -1778,23 +1799,24 @@ const DAILY_TRACKS = [
     function makeGpsIcon(){
       return L.divIcon({
         className:"gps-icon",
-        html:'<div class="gps-wrapper"><div class="gps-cone" id="gpsCone"></div><div class="gps-pulse"></div></div>',
+        html:'<div class="gps-wrapper"><div class="gps-cone" id="gpsCone"></div><div class="gps-heading-arrow"></div><div class="gps-pulse"></div></div>',
         iconSize:[14,14],
         iconAnchor:[7,7]
       });
     }
 
     function updateGpsHeadingCone(){
-      const cone = document.getElementById('gpsCone');
-      if (!cone || !gpsMarker) return;
+      const wrapper = document.querySelector('.gps-wrapper');
+      if (!wrapper || !gpsMarker) return;
       if (deviceHeading !== null){
-        cone.style.display = 'block';
+        wrapper.classList.add('heading-ready');
         // Wrapper rotates so cone points to real heading direction.
         // Subtract currentBearing so the visual stays correct when map is rotated.
         const visualAngle = deviceHeading - currentBearing;
-        cone.parentElement.style.transform = `rotate(${visualAngle}deg)`;
+        wrapper.style.transform = `rotate(${visualAngle}deg)`;
       } else {
-        cone.style.display = 'none';
+        wrapper.classList.remove('heading-ready');
+        wrapper.style.transform = '';
       }
     }
 
@@ -1823,8 +1845,12 @@ const DAILY_TRACKS = [
       let heading = null;
       if (e.webkitCompassHeading != null){
         heading = e.webkitCompassHeading; // iOS: absolute magnetic heading
+      } else if (e.compassHeading != null){
+        heading = e.compassHeading;
       } else if (e.alpha != null && e.absolute === true){
         heading = (360 - e.alpha + 360) % 360; // Android absolute
+      } else if (e.alpha != null && /Android/i.test(navigator.userAgent)){
+        heading = (360 - e.alpha + 360) % 360;
       }
       if (heading === null) return;
       deviceHeading = heading;
@@ -1918,6 +1944,7 @@ const DAILY_TRACKS = [
         return;
       }
       gpsBtn.classList.add("active");
+      startOrientationListener();
       let firstFix = true;
       gpsWatchId = navigator.geolocation.watchPosition(
         pos => {
@@ -1931,7 +1958,7 @@ const DAILY_TRACKS = [
             gpsAccuracy.setLatLng(ll);
             gpsAccuracy.setRadius(accuracy);
           }
-          startOrientationListener(); // start compass for the heading cone
+          updateGpsHeadingCone();
           if (firstFix){
             firstFix = false;
             map.setView(ll, 13);
