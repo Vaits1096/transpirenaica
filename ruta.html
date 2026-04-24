@@ -1328,6 +1328,24 @@ const DAILY_TRACKS = [
       };
     }
 
+    function findProfilePointAtKm(points, targetKm){
+      if (!points.length) return null;
+      if (targetKm <= points[0].km) return points[0];
+      if (targetKm >= points[points.length - 1].km) return points[points.length - 1];
+      let lo = 0;
+      let hi = points.length - 1;
+      while (lo < hi){
+        const mid = Math.floor((lo + hi) / 2);
+        if (points[mid].km < targetKm) lo = mid + 1;
+        else hi = mid;
+      }
+      const current = points[lo];
+      const prev = points[lo - 1];
+      if (!prev || Math.abs(current.km - targetKm) < 1e-6) return current;
+      if (Math.abs(prev.km - targetKm) < 1e-6 || current.km === prev.km) return prev;
+      return interpolateProfilePoint(prev, current, targetKm);
+    }
+
     function clipProfileToRange(points, startKm, endKm){
       if (!points.length || endKm < points[0].km || startKm > points[points.length - 1].km){
         return [];
@@ -1552,6 +1570,27 @@ const DAILY_TRACKS = [
         return `M ${xScale(start.km)},${layout.height - layout.padB} L ${points.map(p => `${xScale(p.km)},${yScale(p.elev)}`).join(" L ")} L ${xScale(end.km)},${layout.height - layout.padB} Z`;
       }
 
+      function showProfileCursor(point){
+        const cursor = profileSvg.querySelector("#profileCursor");
+        const cursorLine = profileSvg.querySelector("#profileCursorLine");
+        const cursorDot = profileSvg.querySelector("#profileCursorDot");
+        if (!cursor || !cursorLine || !cursorDot) return;
+        const x = xScale(point.km);
+        const y = yScale(point.elev);
+        cursorLine.setAttribute("x1", x);
+        cursorLine.setAttribute("x2", x);
+        cursorLine.setAttribute("y1", layout.padT);
+        cursorLine.setAttribute("y2", layout.height - layout.padB);
+        cursorDot.setAttribute("cx", x);
+        cursorDot.setAttribute("cy", y);
+        cursor.setAttribute("opacity", "1");
+      }
+
+      function hideProfileCursor(){
+        const cursor = profileSvg.querySelector("#profileCursor");
+        if (cursor) cursor.setAttribute("opacity", "0");
+      }
+
       function showProfileTooltip(point, kind, label){
         const svgRect = profileSvg.getBoundingClientRect();
         const wrapRect = profileSvg.parentElement.getBoundingClientRect();
@@ -1566,10 +1605,12 @@ const DAILY_TRACKS = [
         profileTip.style.top = `${rawTop}px`;
         profileTip.style.transform = shouldPlaceBelow ? "translate(-50%, 12px)" : "translate(-50%, calc(-100% - 10px))";
         profileTip.classList.add("visible");
+        showProfileCursor(point);
       }
 
       function hideProfileTooltip(){
         profileTip.classList.remove("visible");
+        hideProfileCursor();
       }
 
       function showProfileTooltipAtClientX(clientX){
@@ -1577,7 +1618,8 @@ const DAILY_TRACKS = [
         const rect = profileSvg.getBoundingClientRect();
         const svgX = ((clientX - rect.left) / rect.width) * layout.width;
         if (svgX < layout.padL || svgX > layout.width - layout.padR) return;
-        const point = findNearestProfilePoint(visiblePoints, xToKm(svgX));
+        const point = findProfilePointAtKm(visiblePoints, xToKm(svgX));
+        if (!point) return;
         const day = days.find(d => d.day === point.day);
         showProfileTooltip(point, "Perfil real", day ? day.title : point.label);
       }
@@ -1656,6 +1698,10 @@ const DAILY_TRACKS = [
         ${hitSvg}
         ${dotsSvg}
         ${xLabels}
+        <g id="profileCursor" opacity="0" pointer-events="none">
+          <line id="profileCursorLine" x1="0" x2="0" y1="${layout.padT}" y2="${layout.height-layout.padB}" stroke="#62d0ff" stroke-opacity=".32" stroke-width="1.5"/>
+          <circle id="profileCursorDot" cx="0" cy="0" r="${layout.compact ? 4.6 : 4.2}" fill="#62d0ff" fill-opacity=".95" stroke="#08101d" stroke-width="1.6"/>
+        </g>
       `;
 
       profileSvg.querySelectorAll(".profile-seg").forEach(el => {
@@ -1670,7 +1716,8 @@ const DAILY_TRACKS = [
           if (profileDrag.active) return;
           const rect = profileSvg.getBoundingClientRect();
           const svgX = ((ev.clientX - rect.left) / rect.width) * layout.width;
-          const point = findNearestProfilePoint(day.profile, xToKm(svgX));
+          const point = findProfilePointAtKm(day.profile, xToKm(svgX));
+          if (!point) return;
           showProfileTooltip(point, "Perfil real", day.title);
         });
         el.addEventListener("pointerleave", ev => {
